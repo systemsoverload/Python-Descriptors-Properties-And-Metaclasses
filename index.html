@@ -1,0 +1,389 @@
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Django Demystified - Properties, Descriptors, and Metaclasses</title>
+    <link href='http://fonts.googleapis.com/css?family=Merriweather:400,300,700,900|Inconsolata:400,700' rel='stylesheet' type='text/css'>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <style type="text/css">
+      @import url(http://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
+      @import url(http://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+      @import url(http://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
+
+      body {
+        font-family: 'Merriweather';
+      }
+      h1, h2, h3 {
+        font-weight: 400;
+        margin-bottom: 0;
+      }
+      .remark-slide-content h1 { font-size: 3em; }
+      .remark-slide-content h2 { font-size: 2em; }
+      .remark-slide-content h3 { font-size: 1.6em; }
+      .remark-slide-content { font-size: 14px;}
+      .footnote {
+        position: absolute;
+        bottom: 3em;
+      }
+      li p { line-height: 1.25em; }
+      .red { color: #fa0000; }
+      .large { font-size: 2em; }
+      a, a > code {
+        color: rgb(249, 38, 114);
+        text-decoration: none;
+      }
+      code {
+        -moz-border-radius: 5px;
+        -web-border-radius: 5px;
+        background: #e7e8e2;
+        border-radius: 5px;
+      }
+      .remark-code {font-size: 0.90em;}
+      .small-code {font-size: 0.70em !important;}
+      .remark-code, .remark-inline-code { font-family: 'Inconsolata';}
+      .remark-code-line-highlighted     { background-color: #373832; }
+      .pull-left {
+        float: left;
+        width: 47%;
+      }
+      .pull-right {
+        float: right;
+        width: 47%;
+      }
+      .pull-right ~ p {
+        clear: both;
+      }
+      #slideshow .slide .content code {
+        font-size: 0.6em;
+      }
+      #slideshow .slide .content pre code {
+        font-size: 0.9em;
+        padding: 15px;
+      }
+      .inverse {
+        background: #272822;
+        color: #777872;
+      }
+      .inverse h1, .inverse h2 {
+        color: #f3f3f3;
+        line-height: 0.8em;
+      }
+
+      /* Slide-specific styling */
+      #slide-inverse .footnote {
+        bottom: 12px;
+        left: 20px;
+      }
+
+      /* Two-column layout */
+      .left-column {
+        color: #777;
+        width: 20%;
+        height: 92%;
+        float: left;
+      }
+      .left-column h2:last-of-type, .left-column h3:last-child {
+        color: #000;
+      }
+      .right-column {
+        width: 75%;
+        float: right;
+        padding-top: 1em;
+      }
+      .quote {
+        font-size: .65em;
+        font-style: italic;
+        color: rgb(249, 38, 114);
+      }
+      .name{
+        font-size: .65em;
+        font-style: italic;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+
+class: center, middle, inverse
+
+#Django Demystified
+##Properties, Descriptors, and Metaclasses
+
+.footnote[
+    ###TJ Kells - Principal Engineer - CorvisaCloud
+]
+---
+
+
+class: center, middle, inverse
+
+# Properties
+---
+
+## Dynamically Un-awesome
+Sometimes instance attributes need to be dynamic in some way. Here's how NOT to do it.
+```python
+from datetime import datetime
+
+class Person(object):
+
+    def __init__(self, first_name="John", last_name="Doe", year_of_birth=1979):
+        self.first_name = first_name
+        self.last_name = last_name
+        self.year_of_birth = year_of_birth
+
+    def get_age(self):
+        return datetime.now().year - self.year_of_birth
+
+    def set_age(self, age):
+        self.year_of_birth = datetime.now().year - age
+
+jd = Person()
+jd.get_age() == 35
+jd.set_age(44)
+jd.year_of_birth == 1970
+```
+---
+
+## Decorate For Great Justice
+Fortunately python has the awesome builtin decorator `property` that makes this considerably less awkward.
+.small-code[
+```python
+from datetime import datetime
+
+
+class Person(object):
+
+    def __init__(self, first_name="John", last_name="Doe", year_of_birth=1979):
+        self.first_name = first_name
+        self.last_name = last_name
+        self.year_of_birth = year_of_birth
+
+    @property
+    def age(self):
+        return datetime.now().year - self.year_of_birth
+
+    @age.setter
+    def age(self, new_age):
+        self.year_of_birth = datetime.now().year - new_age
+```
+]
+---
+
+## DDRY
+Unfortunately this syntax can get tedious and repetitive when many different attributes need to follow similar business logic.
+```python
+class Person(object):
+
+    def __init__(self, first_name="John", last_name="Doe",
+                 year_of_birth=1979, salary=200, offspring=0):
+        self.first_name = first_name
+        self.last_name = last_name
+        self.year_of_birth = year_of_birth
+        self.salary = salary
+        self.offspring = offspring
+
+    @property
+    def age(self):
+        return datetime.now().year - self.year_of_birth
+
+    @age.setter
+    def age(self, new_age):
+        if new_age &lt; 0:
+            raise ValueError("Only positive numbers allowed for age")
+        self.year_of_birth = datetime.now().year - new_age
+
+    @property
+    def salary(self):
+        return self._salary
+
+    @salary.setter
+    def salary(self, value):
+        if value &lt; 0:
+            raise ValueError("Only positive numbers allowed for age")
+
+        self._salary = value
+
+    @property
+    def offspring(self):
+        return self._offspring
+
+    @offspring.setter
+    def offspring(self, value):
+        if value &lt; 0:
+            raise ValueError("Only positive numbers allowed for age")
+```
+---
+
+
+class: center, middle, inverse
+#Enter Descriptors.
+---
+## DRY
+```python
+from datetime import datetime
+
+
+class NonNegative(object):
+    """A descriptor that forbids negative values"""
+    def __init__(self, default):
+        self.default = default
+        self.data = dict()
+
+    def __get__(self, instance, owner):
+        return self.data.get(instance, self.default)
+
+    def __set__(self, instance, value):
+        if value &lt; 0:
+            raise ValueError("Only positive numbers allowed for age")
+        self.data[instance] = value
+
+
+class Person(object):
+
+    year_of_birth = NonNegative(40)
+    salary = NonNegative(200)
+    offspring = NonNegative(0)
+
+    def __init__(self, first_name="John", last_name="Doe",
+                 year_of_birth=1979, salary=200, offspring=0):
+        self.first_name = first_name
+        self.last_name = last_name
+        self.salary = salary
+        self.offspring = offspring
+
+    @property
+    def age(self):
+        return datetime.now().year - self.year_of_birth
+
+    @age.setter
+    def age(self, new_age):
+        if new_age &lt; 0:
+            raise ValueError("Only positive numbers allowed for age")
+        self.year_of_birth = datetime.now().year - new_age
+```
+---
+
+
+class: center, middle, inverse
+
+##Prepare for...
+
+<img src="images/brain_explode.gif">
+---
+
+## Sugar Sugar
+That pretty `@property` decorator is actually just syntactic sugar. `property()` just returns a descriptor that uses the arguments as `__get__`, `__set__`, and `__del__`.
+
+```python
+from datetime import datetime
+
+
+class Person(object):
+
+    def get_age(self):
+        return datetime.now().year - self.year_of_birth
+
+    def set_age(self, new_age):
+        self.year_of_birth = datetime.now().year - new_age
+
+    age = property(get_age, set_age, None, "The calculated age of a Person instance")
+
+    def __init__(self, first_name="John", last_name="Doe", year_of_birth=1979):
+        self.first_name = first_name
+        self.last_name = last_name
+        self.year_of_birth = year_of_birth
+
+jd = Person()
+assert jd.age == 35
+
+jd.age = 44
+assert jd.year_of_birth == 1970
+
+```
+---
+
+class: center, middle, inverse
+#Metaclasses
+>Metaclasses are deeper magic than 99% of users should ever worry about. If you wonder whether you need them, you don't (the people who actually need them know with certainty that they need them, and don't need an explanation about why).
+
+>>-- Python Guru Tim Peters
+---
+
+
+##Wait, wat?
+Everything in python is a "first class object". This loosely means that `type` is the type of all types in python, including itself! Sort of... `type` is actually a metaclass, which is to say it is a thing that builds classes.
+```python
+class Foo(object):
+    pass
+
+type(1) == int
+type('foo') == str
+type(123.456) == float
+type({}) == dict
+type([]) == list
+type(int) == type
+type(str) == type
+type(float) == type
+type(Foo) == type
+# Wait... wat?
+```
+---
+
+##Type-ically Weird
+`type` actually has two completely separate invocations. The more common one that we saw in the previous slide which returns the type of the passed item, and the less common form below which actually constructs a new type. An easy analogy is that the second form of `type` creates a new instance of a type, similar to the way `dict()` creates a new instance of a dictionary.
+
+```python
+# Analagous to
+# class Foo(object):
+#   bar = "baz"
+Foo = type('Foo', (), {"bar": "baz"})
+f = Foo()
+f.bar == "baz"
+```
+---
+
+
+class: center, middle, inverse
+
+#Django
+---
+
+## Putting it all together
+In the struggle to find good real-world applications of all of these things, I was lead invariably to the django source code. Taking what we just learned and applying it to the way django operates effectively dispels MUCH of what most people consider 'magic'.
+
+### Properties
+* erywhere
+    * Over 900 occurences of `property` in the 1.7 codebase
+
+### Metaclasses
+* Models
+    * Fields and options collected into .\_meta attribute in \_\_new\_\_ method of ModelBase
+* Forms
+    * base\_fields dictionary is created in \_\_new\_\_ method of DeclarativeFieldsMetaclass
+    * widgets use the metaclass MediaDefiningClass which dynamically creates a .media descriptor
+
+### Descriptors
+* Model Managers
+* ForeignKey Fields - Dynamically creates dot accessible related things ie - 'author.books.all()'
+
+
+
+---
+
+class: center, middle, inverse
+
+#Questions?
+---
+
+
+
+    </textarea>
+    <script src="http://gnab.github.io/remark/downloads/remark-latest.min.js" type="text/javascript">
+    </script>
+    <script type="text/javascript">
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>
